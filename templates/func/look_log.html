@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+{% load mytags %}
+{% block content %}
+{% include 'nav_cat_bar.html' %}
+<div class="wrapper wrapper-content animated fadeInRight">
+    <div class="row">
+        <div class="col-sm-10">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5>实时日志查看</h5>
+                    <div class="ibox-tools">
+                        <a class="collapse-link">
+                            <i class="fa fa-chevron-up"></i>
+                        </a>
+                        <a class="dropdown-toggle" data-toggle="dropdown" href="#">
+                            <i class="fa fa-wrench"></i>
+                        </a>
+                        <a class="close-link">
+                            <i class="fa fa-times"></i>
+                        </a>
+                    </div>
+                </div>
+		<div class="ibox-content">
+                    <form method="post" id="LookLogForm" class="form-horizontal" action="">
+                        <div id='msg_error'>
+                            {% if error %}
+                                <div class="alert alert-warning text-center">{{ error }}</div>
+                       	    {% endif %}
+                       	    {% if msg %}
+                     	        <div class="alert alert-success text-center">{{ msg|safe }}</div>
+                       	    {% endif %}
+                	</div>
+                        <div class="col-sm-3">
+                            <select id="host_select" name="host_select" class="form-control" onchange="change_info()">
+                                <option value="">主机选择</option>
+                                {% for asset in asset_list %}
+                                    {% ifequal asset.hostname host.hostname %}
+                                        <option value="{{ asset.id }}" selected>{{ asset.hostname }}</option>
+                                    {% else %}
+                                        <option value="{{ asset.id }}">{{ asset.hostname }}</option>
+                                    {% endifequal %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-sm-3">
+                            <select id="log_select" name="log_select" class="form-control" onchange="log_change()">
+                                <option value="">日志路径选择</option>
+                                {% for log in log_list %}
+                                    <option value="{{ log.id }}">{{ log.path }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-sm-2"></div>
+                        <input type='submit' class='btn btn-success' id='log_look' name='log_look' value='查看日志'>
+                        <button type='button' class='btn btn-warning' id='stop_look'>停止查看</button>
+
+                        <div id='log' style="background:black; color:#00ff00; padding: 8px 5px; font-size: 12px; line-height: 1.2; height: 580px; overflow: auto;">
+                            <div id='log_data'></div>
+                        </div>
+		    </form>
+
+		</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block self_footer_js %}
+<script>
+flag = false;
+lock = false;
+
+function change_info(){
+    $("#msg_error").empty();
+    host_id = $("#host_select").val();
+    if (host_id.length > 0){
+        $.ajax({
+            type: "post",
+            url: "{% url 'get_loglist' %}",
+            data: JSON.stringify({"host_id": host_id}),
+            dataType: "json",
+            success: function(data){
+                log_list = data.log_list
+                $("#log_select").empty();
+                $("#log_select").append("<option value=''>日志路径选择</option>");
+                if (log_list.length > 0){
+                    for (item in log_list){ 
+                        $("#log_select").append("<option value='" + log_list[item].id + "'>" + log_list[item].path + "</option>");
+                    }
+                }
+            },
+            error: function(){
+                $("#msg_error").empty();
+                $("#msg_error").append("<div class='alert alert-warning text-center'>后台请求失败</div>");
+            }
+        });
+    } else {
+        $("#log_select").empty();
+        $("#log_select").append("<option value=''>日志路径选择</option>");
+    }
+}
+
+function log_change(){
+    if (flag || lock){
+        $("#msg_error").empty();
+        error_print("日志路径发生改变，暂停查看");
+        flag = false;
+        lock = false;
+        clearInterval(i);
+    }
+}
+    
+function start_look() {
+    if (!flag && !lock){
+        offset = -1;
+        $("#log").empty();
+        $("#log").append("<div id='log_data'></div>");
+        $("#msg_error").empty();
+        flag = true;
+        i = setInterval("look_ajax()", 100);
+    }
+}
+
+$('#stop_look').click(function() {
+    if (flag){
+        flag = false;
+        lock = false;
+        offset = -1;
+        clearInterval(i);
+    }
+})
+
+function transferstring(content) {  
+    var string = content;  
+    try{  
+        string=string.replace(/\r\n/g,"<br/>")  
+        string=string.replace(/\n/g,"<br/>");  
+        string=string.replace(/\t/g,"&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp");
+    }catch(e) {  
+        alert(e.message);  
+    }  
+    return string;  
+}  
+
+function error_print(error_msg) {
+    $("#msg_error").empty();
+    $("#msg_error").append("<div class='alert alert-warning text-center'>日志查看失败," + error_msg + "</div>");
+    flag = false;
+    clearInterval(i);
+}
+
+function log_output(arr) {
+    var num = 0;
+    output_interval = null;
+    function scroll_output() {
+        if (num<arr.length){
+            if (arr[num] != ''){
+                $("#log_data").append(arr[num] + "<br/>");
+                $("#log").scrollTop($("#log")[0].scrollHeight);
+            }
+            num += 1;
+        } else {
+            clearInterval(output_interval);
+        }
+    }
+    output_interval = setInterval(scroll_output, 70);
+}
+
+function look_ajax() {
+    host_id = $("#host_select").val();
+    log_id = $("#log_select").val();
+    if (flag && !lock) {
+        lock = true;
+        $.ajax({
+            type: "post",
+            url: "{% url 'look_log' %}",
+            data: JSON.stringify({"offset": offset, "host_id": host_id, "log_id": log_id}),
+            dataType: "json",
+            success: function(data){
+                msg = data.msg;
+                if (data.status == "successed"){
+                    if (offset == -1 && flag){
+                        $("#log_data").append("日志信息:<br/>");
+                        //$("#log_data").append(transferstring(msg));
+                        //$("#log").scrollTop($("#log")[0].scrollHeight);
+                        log_arr = transferstring(msg).split('<br/>');
+                        log_output(log_arr);
+                        offset = data.offset;
+                    } else if (msg != "") {
+                        //$("#log_data").append(transferstring(msg));
+                        //$("#log").scrollTop($("#log")[0].scrollHeight);
+                        log_arr = transferstring(msg).split('<br/>');
+                        log_output(log_arr);
+                        offset = data.offset;
+                    }
+                } else {
+                    offset = -1;
+                    error_print(msg);
+                }
+                lock = false;
+            },
+            error: function() {
+                offset = -1;
+                error_print("请求出现异常");
+                lock = false;
+            }
+        })
+    }
+}
+
+$("#log_look").click(function(){
+    $("#msg_error").empty();
+    $("#LookLogForm").validator({
+        timely: 2,
+        theme: "yellow_right_effect",
+        fields: {
+            "log_select": {
+                rule: "required",
+                tip: "请选择要查看的日志路径",
+                ok: "",
+                msg: {required: "必须选择一个日志路径!"}
+            },
+            "host_select": {
+                rule: "required",
+                tip: "请选择相应的主机",
+                ok: "",
+                msg: {required: "必须选择一台主机!"}
+            },
+        },
+        valid: function(form){
+            start_look();
+        }
+    });
+});
+</script>
+{% endblock %}

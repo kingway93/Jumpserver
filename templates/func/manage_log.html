@@ -1,0 +1,219 @@
+{% extends 'base.html' %}
+{% load mytags %}
+{% block content %}
+{% include 'nav_cat_bar.html' %}
+<div class="wrapper wrapper-content animated fadeInRight">
+    <div class="row">
+        <div class="col-sm-10">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5>日志管理</h5>
+                    <div class="ibox-tools">
+                        <a class="collapse-link">
+                            <i class="fa fa-chevron-up"></i>
+                        </a>
+                        <a class="dropdown-toggle" data-toggle="dropdown" href="#">
+                            <i class="fa fa-wrench"></i>
+                        </a>
+                        <a class="close-link">
+                            <i class="fa fa-times"></i>
+                        </a>
+                    </div>
+                </div>
+		<div class="ibox-content">
+                    <form method="post" id="ManageLogForm" name="ManageLogForm" class="form-horizontal" action="">
+                        <div id='msg_error'>
+                            {% if error %}
+                                <div class="alert alert-warning text-center">{{ error }}</div>
+                       	    {% endif %}
+                       	    {% if msg %}
+                     	        <div class="alert alert-success text-center">{{ msg|safe }}</div>
+                       	    {% endif %}
+                	</div>
+                        <div class="form-group">
+                            <label for="host_select" class="col-sm-2 control-label">主机选择<span class="red-fonts">*</span></label>
+                            <div class="col-sm-6">
+                                <select id="host_select" name="host_select" class="form-control" onchange="change_info()">
+                                    <option value="">主机选择</option>
+                                    {% for asset in asset_list %}
+                                        {% ifequal asset.hostname host.hostname %}
+                                            <option value="{{ asset.id }}" selected>{{ asset.hostname }}</option>
+                                        {% else %}
+                                            <option value="{{ asset.id }}">{{ asset.hostname }}</option>
+                                        {% endifequal %}
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="hr-line-dashed"></div>
+                        <div class="form-group">
+                            <label for="log_select" class="col-sm-2 control-label">删除日志路径选择</label>
+                            <div class="col-sm-6">
+                                <select id="log_select" name="log_select" class="form-control">
+                                    <option value="">删除日志路径选择</option>
+                                    {% for log in log_list %}
+                                        <option value="{{ log.id }}">{{ log.path }}</option>
+                                    {% endfor %}
+                                </select>
+                                <span class="help-block m-b-none">查看该主机当前可以进行查看日志的路径，删除操作必须选择，添加操作可不作选择</span>
+                            </div>
+                        </div>
+                        <div class="hr-line-dashed"></div>
+                        <div class="form-group">
+                            <label for="log_path" class="col-sm-2 control-label">添加日志路径</label>
+                            <div class="col-sm-6">
+                                <input id="log_path" name="log_path" type="txt" class="form-control" placeholder="示例: /srv/qjdchina.com/service/logs/catalina.out"/>
+                                <span class="help-block m-b-none">输入需要添加日志的绝对路径，删除操作可不填</span>
+                            </div>
+                        </div>
+                        <div class="hr-line-dashed"></div>
+                        <div class="form-group">
+                            <div class="col-sm-4 col-sm-offset-3">
+                                <div>
+                                    <input type='submit' class='btn btn-success' id='log_add' name='log_add' value='添加日志路径'>
+                                    <input type='submit' class='btn btn-warning' id='log_del' name='log_del' value='删除日志路径'>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+		</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block self_footer_js %}
+<script>
+function change_info(){
+    $("#msg_error").empty();
+    host_id = $("#host_select").val();
+    if (host_id.length > 0){
+        $.ajax({
+            type: "post",
+            url: "{% url 'get_loglist' %}",
+            data: JSON.stringify({"host_id": host_id}),
+            dataType: "json",
+            success: function(data){
+                log_list = data.log_list
+                $("#log_select").empty();
+                $("#log_select").append("<option value=''>日志路径选择</option>");
+                if (log_list.length > 0){
+                    for (item in log_list){ 
+                        $("#log_select").append("<option value='" + log_list[item].id + "'>" + log_list[item].path + "</option>");
+                    }
+                }
+            },
+            error: function(){
+                $("#msg_error").empty();
+                $("#msg_error").append("<div class='alert alert-warning text-center'>后台请求失败</div>");
+            }
+        });
+    } else {
+        $("#log_select").empty();
+        $("#log_select").append("<option value=''>日志路径选择</option>");
+    }
+}
+
+function ajax_addlog(){
+    host_id = $("#host_select").val();
+    log_path = $("#log_path").val();
+    $.ajax({
+        type: "post",
+        url: "{% url 'add_log' %}",
+        data: JSON.stringify({"host_id": host_id, "log_path": log_path}),
+        dataType: "json",
+        success: function(data){
+            status = data.status;
+            if (status == "successed"){
+	        $("#msg_error").append("<div class='alert alert-success text-center'>日志添加成功</div>");
+            } else {
+                msg = data.msg;
+                $("#msg_error").append("<div class='alert alert-warning text-center'>日志添加失败," + msg + "</div>");
+            }
+        },
+        error: function(){
+            $("#msg_error").empty();
+            $("#msg_error").append("<div class='alert alert-warning text-center'>后台请求失败</div>");
+        }
+    });
+}
+
+function ajax_dellog(){
+    host_id = $("#host_select").val();
+    log_id = $("#log_select").val();
+    $.ajax({
+        type: "post",
+        url: "{% url 'del_log' %}",
+        data: JSON.stringify({"host_id": host_id, "log_id": log_id}),
+        dataType: "json",
+        success: function(data){
+            status = data.status;
+            if (status == "successed"){
+                $("#msg_error").append("<div class='alert alert-success text-center'>日志删除成功</div>");
+            } else {
+                msg = data.msg;
+                $("#msg_error").append("<div class='alert alert-warning text-center'>日志删除失败," + msg + "</div>");
+            }
+        },
+        error: function(){
+            $("#msg_error").empty();
+            $("#msg_error").append("<div class='alert alert-warning text-center'>后台请求失败</div>");
+        }
+    });
+}
+
+$("#log_del").click(function(){
+    $("#msg_error").empty();
+    $("#ManageLogForm").validator({
+        timely: 2,
+        theme: "yellow_right_effect",
+        fields: {
+            "log_select": {
+                rule: "required",
+                tip: "请选择要删除的日志路径",
+                ok: "",
+                msg: {required: "必须选择一个要删除的日志路径!"}
+            },
+            "host_select": {
+                rule: "required",
+                tip: "请选择相应的主机",
+                ok: "",
+                msg: {required: "必须选择一台主机!"}
+            },
+        },
+        valid: function(form){
+            ajax_dellog();
+        }
+    });
+});
+
+$("#log_add").click(function(){
+    $("#msg_error").empty();
+    $("#ManageLogForm").validator({
+        timely: 2,
+        theme: "yellow_right_effect",
+        rules: {
+            check_log_path: [/^\/.*/, "请输入绝对路径"],
+        },
+        fields: {
+            "log_path": {
+                rule: "required; check_log_path",
+                tip: "请输入要添加的日志路径",
+                ok: "",
+                msg: {required: "必须填写要添加的日志路径!"}
+            },
+            "host_select": {
+                rule: "required",
+                tip: "请选择相应的主机",
+                ok: "",
+                msg: {required: "必须选择一台主机!"}
+            },
+        },
+        valid: function(form){
+            ajax_addlog();
+        }
+    });
+});
+</script>
+{% endblock %}
